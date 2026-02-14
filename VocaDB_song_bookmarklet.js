@@ -237,6 +237,19 @@ javascript: (async function () {
           videoId = videoUrl.split("?v=")[1].split("&")[0];
           break;
         default:
+          if (window.location.host.endsWith(".bandcamp.com")) {
+            service = "Bandcamp";
+            const linkedData = JSON.parse(document.querySelector("script[type='application/ld+json']").textContent);
+            for (const prop of linkedData.additionalProperty) {
+              if (prop.name == "track_id") {
+                videoId = prop.value;
+              }
+            }
+            if (videoId === undefined) {
+              throw new Error(`Unable to find track_id in Bandcamp data.`);
+            }
+            break;
+          }
           throw new Error(`Unsupported host: ${window.location.host}`);
       }
       const songData = await checkSongInDatabase(videoId, service);
@@ -276,6 +289,8 @@ javascript: (async function () {
         "www.bilibili.com" */
       ].includes(host)
     ) {
+      await handleDirectVideoPage();
+    } else if (host.endsWith(".bandcamp.com")) {
       await handleDirectVideoPage();
     } else {
       alert("This bookmarklet is not supported on this website.");
