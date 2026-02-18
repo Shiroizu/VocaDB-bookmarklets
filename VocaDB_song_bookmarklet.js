@@ -241,6 +241,54 @@ javascript: (async function () {
       await addButtonsForNicoVideo(videoId);
     }
   };
+  const handleNicoChannelVideoPage = async () => {
+    console.log("Processing Nico Channel video page...");
+
+    const videos = document.querySelectorAll("a.watchLink");
+    if (!videos.length) {
+      console.error("No videos found on channel page.");
+      return;
+    }
+
+    for (const link of videos) {
+      await sleep(CONFIG.delay);
+
+      const match = link.href.match(/\/watch\/([^/?]+)/);
+      if (!match) continue;
+
+      const videoId = match[1];
+
+      const songData = await checkSongInDatabase(videoId, "NicoNicoDouga");
+      const nicoUrl = `https://www.nicovideo.jp/watch/${videoId}`;
+
+      if (songData === null) {
+        const addBtn = createButton(
+          "Add",
+          CONFIG.colors.add,
+          `${CONFIG.baseUrl}/Song/Create?pvUrl=${nicoUrl}`
+        );
+
+        const infoBtn = createButton(
+          "Info",
+          CONFIG.colors.add,
+          `http://nicodata.vocaloid.eu/?NicoUrl=${nicoUrl}`
+        );
+
+        link.parentElement.appendChild(addBtn);
+        link.parentElement.appendChild(infoBtn);
+
+      } else {
+        const entryBtn = createButton(
+          "Song Entry",
+          CONFIG.colors.existing,
+          `${CONFIG.baseUrl}/S/${songData.id}`
+        );
+
+        link.parentElement.appendChild(entryBtn);
+      }
+    }
+  };
+
 
   const handleNicoUserPage = async () => {
     console.log("Processing Nico User page...");
@@ -354,8 +402,13 @@ javascript: (async function () {
   const { host, pathname } = window.location;
 
   try {
-    if (host === "www.nicolog.jp" && pathname.startsWith("/user/")) {
+    if (host === "www.nicolog.jp" && (pathname.startsWith("/user/") || pathname.startsWith("/ch/"))) {
       await handleNicologUserPage();
+    } else if (
+      host === "ch.nicovideo.jp" &&
+      pathname.endsWith("/video")
+    ) {
+      await handleNicoChannelVideoPage();
     } else if (host === "www.nicovideo.jp" && !pathname.startsWith("/watch/")) {
       if (pathname.startsWith("/tag/") || pathname.startsWith("/search/")) {
         await handleVideoListPage();
