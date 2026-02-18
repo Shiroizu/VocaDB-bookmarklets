@@ -79,6 +79,16 @@ javascript: (async function () {
     return result === "null" ? null : JSON.parse(result);
   };
 
+  const checkPiaproDuplicate = async (pvUrl) => {
+    const url = `${CONFIG.baseUrl}/api/songs/findDuplicate?pv[]=${encodeURIComponent(pvUrl)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    return result.matches && result.matches.length > 0
+      ? result.matches[0].entry
+      : null;
+  };
+
   const addButtonsForNicoVideo = async videoId => {
     const songData = await checkSongInDatabase(videoId, "NicoNicoDouga");
     const nicoBase = (window.location.host === "www.nicolog.jp") ? "nicolog" : "nicovideo";
@@ -120,7 +130,7 @@ javascript: (async function () {
       a.onmousedown = null;
       a.onmouseup = null;
       a.addEventListener("click", e => e.stopPropagation(), true);
-  });
+    });
 
     let videos = document.querySelectorAll(".grid-area_main .flex-d_column");
     let gridLayout = true;
@@ -143,7 +153,7 @@ javascript: (async function () {
       await sleep(CONFIG.delay);
 
       console.log("Video:", video);
-      
+
       if (!video) continue;
       const title = gridLayout
         ? video.childNodes[1].innerText || ""
@@ -178,6 +188,36 @@ javascript: (async function () {
       await addButtonsForNicoVideo(videoId);
     }
   };
+
+  const resolvePiaproTrackUrl = async (url) => {
+    // Already canonical
+    if (url.includes("/t/")) {
+      const id = url.split("/t/")[1].split(/[?#]/)[0];
+      return `https://piapro.jp/t/${id}`;
+    }
+
+    // /content/ → resolve to canonical /t/
+    if (url.includes("/content/")) {
+      // Try canonical link from DOM first (fast path)
+      const canonical = document.querySelector("link[rel='canonical']");
+      if (canonical && canonical.href.includes("/t/")) {
+        const id = canonical.href.split("/t/")[1].split(/[?#]/)[0];
+        return `https://piapro.jp/t/${id}`;
+      }
+
+      // Fallback: fetch page
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const html = await response.text();
+      const match = html.match(/https:\/\/piapro\.jp\/t\/([^"']+)/);
+      if (!match) return null;
+
+      return `https://piapro.jp/t/${match[1]}`;
+    }
+
+    return null;
+  };
+
 
   // Page handlers
   const handleNicologUserPage = async () => {
@@ -221,6 +261,37 @@ javascript: (async function () {
     }
   };
 
+  const handlePiaproUserPage = async () => {
+    const links = document.querySelectorAll("a[href*='/t/'], a[href*='/content/']");
+    if (!links.length) return;
+
+    for (const link of links) {
+      await sleep(CONFIG.delay);
+
+      const normalizedUrl = await resolvePiaproTrackUrl(link.href);
+      if (!normalizedUrl) continue;
+
+      const songData = await checkPiaproDuplicate(normalizedUrl);
+
+      if (songData) {
+        const entryBtn = createButton(
+          "Song Entry",
+          CONFIG.colors.existing,
+          `${CONFIG.baseUrl}/S/${songData.id}`
+        );
+        link.parentElement.appendChild(entryBtn);
+      } else {
+        const addBtn = createButton(
+          "Add",
+          CONFIG.colors.add,
+          `${CONFIG.baseUrl}/Song/Create?pvUrl=${normalizedUrl}`
+        );
+        link.parentElement.appendChild(addBtn);
+      }
+    }
+  };
+
+
   const handleDirectVideoPage = async () => {
     console.log("Processing direct video page...");
     try {
@@ -236,6 +307,19 @@ javascript: (async function () {
           service = "Youtube";
           videoId = videoUrl.split("?v=")[1].split("&")[0];
           break;
+        case "piapro.jp": {
+          const normalizedUrl = await resolvePiaproTrackUrl(videoUrl);
+          if (!normalizedUrl) throw new Error("Unsupported Piapro URL");
+
+          const songData = await checkPiaproDuplicate(normalizedUrl);
+
+          if (songData) {
+            window.location.assign(`${CONFIG.baseUrl}/S/${songData.id}`);
+          } else {
+            window.open(`${CONFIG.baseUrl}/Song/Create?pvUrl=${normalizedUrl}`);
+          }
+          return;
+        }
         default:
           if (window.location.host.endsWith(".bandcamp.com")) {
             service = "Bandcamp";
@@ -278,13 +362,15 @@ javascript: (async function () {
       } else if (pathname.startsWith("/user/")) {
         await handleNicoUserPage();
       }
+    } else if (host === "piapro.jp" && pathname.includes("/content_list/")) {
+      await handlePiaproUserPage();
     } else if (
       [
         "www.youtube.com",
         "music.youtube.com",
-        "www.nicovideo.jp"
-        /* "piapro.jp",
-        "vimeo.com",
+        "www.nicovideo.jp",
+        "piapro.jp",
+        /*"vimeo.com",
         "soundcloud.com",
         "www.bilibili.com" */
       ].includes(host)
