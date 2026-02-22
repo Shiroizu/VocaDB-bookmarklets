@@ -199,10 +199,12 @@ javascript: (async function () {
     // /content/ → resolve to canonical /t/
     if (url.includes("/content/")) {
       // Try canonical link from DOM first (fast path)
-      const canonical = document.querySelector("link[rel='canonical']");
-      if (canonical && canonical.href.includes("/t/")) {
-        const id = canonical.href.split("/t/")[1].split(/[?#]/)[0];
-        return `https://piapro.jp/t/${id}`;
+      if (url === window.location.href) {
+        const canonical = document.querySelector("link[rel='canonical']");
+        if (canonical && canonical.href.includes("/t/")) {
+          const id = canonical.href.split("/t/")[1].split(/[?#]/)[0];
+          return `https://piapro.jp/t/${id}`;
+        }
       }
 
       // Fallback: fetch page
@@ -309,7 +311,7 @@ javascript: (async function () {
     }
   };
 
-  const handlePiaproUserPage = async () => {
+  const handlePiaproListPage = async () => {
     const links = document.querySelectorAll("a[href*='/t/'], a[href*='/content/']");
     if (!links.length) return;
 
@@ -415,8 +417,11 @@ javascript: (async function () {
       } else if (pathname.startsWith("/user/")) {
         await handleNicoUserPage();
       }
-    } else if (host === "piapro.jp" && pathname.includes("/content_list/")) {
-      await handlePiaproUserPage();
+    } else if (
+      host === "piapro.jp" &&
+      (pathname.includes("/content_list/") || pathname.includes("/content_tag/"))
+    ) {
+      await handlePiaproListPage();
     } else if (
       [
         "www.youtube.com",
